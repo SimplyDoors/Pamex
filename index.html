@@ -98,23 +98,60 @@
             text-align: right; 
             margin-top: 15px; 
         }
-        /* Print styling ensures the quote looks clean when exported to PDF */
+        
+        /* Print layout starts hidden on regular screen */
+        .print-only { display: none; }
+
+        /* Print styling applies the SimplyDoors Purchase Order Format */
         @media print {
-            body { background: white; }
-            .no-print { display: none !important; }
-            .print-only { display: inline !important; }
-            .panel { box-shadow: none; border: none; padding: 0; }
+            body { 
+                background: white; 
+                margin: 0; 
+                padding: 0; 
+                font-family: Arial, sans-serif; 
+                color: #000; 
+            }
+            .no-print, header, .container > .panel { display: none !important; }
+            .print-only { display: block !important; }
+            
+            #print-layout { width: 100%; max-width: 800px; margin: 0 auto; padding: 20px; box-sizing: border-box; }
+            
+            .po-header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+            .po-company-info { font-size: 14px; line-height: 1.5; }
+            
+            .po-meta h2 { text-transform: uppercase; margin: 0 0 10px 0; font-size: 24px; text-align: right; font-weight: bold; letter-spacing: 0.5px; border-bottom: none; }
+            .po-meta table { border-collapse: collapse; width: 220px; float: right; margin-top: 5px; }
+            .po-meta th, .po-meta td { border: 1px solid #000; padding: 6px; text-align: left; font-size: 12px; }
+            .po-meta th { width: 35%; font-weight: normal; }
+            .po-meta td { font-weight: bold; }
+            
+            .po-addresses { display: flex; justify-content: space-between; margin-bottom: 30px; }
+            .po-vendor, .po-shipto { width: 45%; font-size: 13px; line-height: 1.5; }
+            .po-vendor strong, .po-shipto strong { display: block; font-weight: normal; color: #555; margin-bottom: 5px; font-size: 12px; }
+            
+            .po-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .po-table th, .po-table td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 12px; }
+            .po-table th { background: #fff; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+            
+            /* Alignments matching the PDF */
+            .po-table th:nth-child(2), .po-table th:nth-child(3), .po-table th:nth-child(4),
+            .po-table td:nth-child(2), .po-table td:nth-child(3), .po-table td:nth-child(4) { text-align: left; }
+            
+            .po-model { font-weight: bold; display: block; }
+            .po-desc { display: block; margin-top: 3px; }
+            
+            .po-totals { text-align: right; font-size: 14px; margin-top: 15px; font-weight: bold; }
         }
     </style>
 </head>
 <body>
-    <header>
+    <header class="no-print">
         <h1>SimplyDoors Quoting Engine</h1>
         <p>Pamex Hardware Integration</p>
     </header>
 
-    <div class="container">
-        <div class="panel full-width no-print">
+    <div class="container no-print">
+        <div class="panel full-width">
             <h2>1. Initialize Database</h2>
             <p>Select the master Pamex Excel file (.xlsx) to load the pricing data from all tabs.</p>
             <input type="file" id="excel-upload" accept=".xlsx, .xls">
@@ -122,7 +159,7 @@
             <span id="load-status" style="margin-left: 10px; font-weight: bold;"></span>
         </div>
 
-        <div class="panel no-print" style="flex: 1.5;">
+        <div class="panel" style="flex: 1.5;">
             <h2>2. Product Catalog</h2>
             <div class="search-row">
                 <div>
@@ -158,9 +195,15 @@
 
         <div class="panel" style="flex: 1.5;">
             <h2>3. Active Quote</h2>
-            <div class="no-print" style="margin-bottom: 15px;">
-                <label>Customer / Project Name:</label>
-                <input type="text" placeholder="Enter project details...">
+            <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label>Customer / Project Name:</label>
+                    <input type="text" placeholder="Enter project details...">
+                </div>
+                <div style="flex: 1;">
+                    <label>SimplyDoors PO #:</label>
+                    <input type="text" id="po-number-input" placeholder="e.g. 10236417640">
+                </div>
             </div>
             <table id="quote-table">
                 <thead>
@@ -171,7 +214,7 @@
                         <th>Unit Price</th>
                         <th>Qty</th>
                         <th>Line Total</th>
-                        <th class="no-print">Remove</th>
+                        <th>Remove</th>
                     </tr>
                 </thead>
                 <tbody id="quote-body">
@@ -181,10 +224,62 @@
             <div class="totals">
                 Grand Total: $<span id="grand-total">0.00</span>
             </div>
-            <div class="no-print" style="margin-top: 20px; text-align: right;">
-                <button onclick="window.print()">Print / Save PDF Quote</button>
+            <div style="margin-top: 20px; text-align: right;">
+                <button onclick="preparePrint()">Print / Save PO Document</button>
             </div>
         </div>
+    </div>
+
+    <div id="print-layout" class="print-only">
+        <div class="po-header">
+            <div class="po-company-info">
+                17750 Lookout Rd Unit 150<br>
+                Schertz, TX 78154<br>
+                (210) 903-8450<br>
+                sales@simplydoors.com
+            </div>
+            <div class="po-meta">
+                <table>
+                    <tr>
+                        <th>DATE</th>
+                        <td id="print-date"></td>
+                    </tr>
+                    <tr>
+                        <th>PO #</th>
+                        <td id="print-po-num"></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="po-addresses">
+            <div class="po-vendor">
+                <strong>VENDOR</strong>
+                Pamex<br>
+                4680 Vinita Court<br>
+                Chino, CA 91710<br>
+                (909) 606-4168
+            </div>
+            <div class="po-shipto">
+                <strong>SHIP TO</strong>
+                SimplyDoors<br>
+                17750 Lookout Rd Unit 150<br>
+                Schertz, TX 78154
+            </div>
+        </div>
+
+        <table class="po-table">
+            <thead>
+                <tr>
+                    <th>PRODUCT NAME/DESCRIPTION</th>
+                    <th>QTY</th>
+                    <th>UNIT COST</th>
+                    <th>TOTAL</th>
+                </tr>
+            </thead>
+            <tbody id="print-quote-body">
+                </tbody>
+        </table>
     </div>
 
     <script>
@@ -244,7 +339,7 @@
                             if(item['Model']) {
                                 globalCatalog.push({
                                     Model: String(item['Model']).trim(),
-                                    Category: sheetName, // Use the tab name as the category
+                                    Category: sheetName,
                                     Description: desc,
                                     Finish: finish,
                                     Price: parsedPrice
@@ -341,7 +436,10 @@
 
         function renderQuote() {
             const tbody = document.getElementById('quote-body');
+            const printTbody = document.getElementById('print-quote-body');
+            
             tbody.innerHTML = '';
+            printTbody.innerHTML = '';
             let grandTotal = 0;
 
             if (quoteItems.length === 0) {
@@ -354,6 +452,7 @@
                 const lineTotal = item.Price * item.Qty;
                 grandTotal += lineTotal;
                 
+                // --- Active Quote Table UI (Screen) ---
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><strong>${item.Model}</strong></td>
@@ -361,18 +460,48 @@
                     <td>${item.Finish}</td>
                     <td>$${item.Price.toFixed(2)}</td>
                     <td style="width: 80px;">
-                        <input type="number" min="1" value="${item.Qty}" class="no-print" onchange="updateQty('${escapeQuotes(item.Model)}', this.value)" style="margin:0;">
-                        <span class="print-only" style="display:none;">${item.Qty}</span>
+                        <input type="number" min="1" value="${item.Qty}" onchange="updateQty('${escapeQuotes(item.Model)}', this.value)" style="margin:0;">
                     </td>
                     <td>$${lineTotal.toFixed(2)}</td>
-                    <td class="no-print">
+                    <td>
                         <button class="add-btn danger-btn" onclick="removeFromQuote('${escapeQuotes(item.Model)}')">X</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
+
+                // --- SimplyDoors Purchase Order Table (Print) ---
+                const printTr = document.createElement('tr');
+                
+                // Remove 'N/A' from finish rendering
+                const finishText = item.Finish !== 'N/A' ? item.Finish : '';
+                
+                printTr.innerHTML = `
+                    <td>
+                        <span class="po-model">${item.Model} ${finishText}</span>
+                        <span class="po-desc">${item.Description}</span>
+                    </td>
+                    <td>${parseFloat(item.Qty).toFixed(3)}</td>
+                    <td>${item.Price.toFixed(2)}</td>
+                    <td>${lineTotal.toFixed(2)}</td>
+                `;
+                printTbody.appendChild(printTr);
             });
 
             document.getElementById('grand-total').innerText = grandTotal.toFixed(2);
+        }
+
+        function preparePrint() {
+            // Set today's date in MM/DD/YYYY format
+            const today = new Date();
+            const formattedDate = today.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+            document.getElementById('print-date').innerText = formattedDate;
+            
+            // Set PO number
+            const poNum = document.getElementById('po-number-input').value;
+            document.getElementById('print-po-num').innerText = poNum || 'PENDING';
+            
+            // Trigger browser print
+            window.print();
         }
     </script>
 </body>
