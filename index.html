@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SimplyDoors Quoting Engine - Pamex</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
@@ -116,9 +116,9 @@
     <div class="container">
         <div class="panel full-width no-print">
             <h2>1. Initialize Database</h2>
-            <p>Select all the Pamex CSV files simultaneously to load the pricing data.</p>
-            <input type="file" id="csv-uploads" accept=".csv" multiple>
-            <button onclick="processFiles()">Load Data</button>
+            <p>Select the master Pamex Excel file (.xlsx) to load the pricing data from all tabs.</p>
+            <input type="file" id="excel-upload" accept=".xlsx, .xls">
+            <button onclick="processFile()">Load Excel Data</button>
             <span id="load-status" style="margin-left: 10px; font-weight: bold;"></span>
         </div>
 
@@ -191,73 +191,74 @@
         let globalCatalog = [];
         let quoteItems = [];
 
-        function processFiles() {
-            const fileInput = document.getElementById('csv-uploads');
-            const files = fileInput.files;
-            if (files.length === 0) {
-                alert("Please select at least one CSV file.");
+        function processFile() {
+            const fileInput = document.getElementById('excel-upload');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert("Please select the Pamex Excel file.");
                 return;
             }
 
+            document.getElementById('load-status').innerText = "Processing Excel File...";
             globalCatalog = [];
-            let processedCount = 0;
-            document.getElementById('load-status').innerText = "Processing...";
 
-            Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const text = e.target.result;
-                    const lines = text.split('\n');
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                
+                // Loop through every tab/sheet in the Excel workbook
+                workbook.SheetNames.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(sheet, {header: 1}); 
                     
-                    // The Pamex files have headers buried a few lines down.
-                    // This dynamically finds the true header row starting with 'Model'.
-                    let headerIndex = 0;
-                    for (let i = 0; i < Math.min(20, lines.length); i++) {
-                        if (lines[i].toLowerCase().startsWith('model')) {
+                    // Find the true header row starting with 'Model'
+                    let headerIndex = -1;
+                    for(let i = 0; i < Math.min(20, json.length); i++) {
+                        if(json[i] && json[i][0] && String(json[i][0]).toLowerCase().startsWith('model')) {
                             headerIndex = i;
                             break;
                         }
                     }
                     
-                    const processedText = lines.slice(headerIndex).join('\n');
-                    
-                    // Create a clean category name out of the file name
-                    const categoryName = file.name.replace('2025 Sept Pamex Price List.xlsx - ', '').replace('.csv', '');
-
-                    Papa.parse(processedText, {
-                        header: true,
-                        skipEmptyLines: true,
-                        complete: function(results) {
-                            const parsedData = results.data.map(item => {
-                                // Extract price handling weird column names like "List \nPrice" and sanitize string formats
-                                let rawPrice = item['List Price'] || item['List \nPrice'] || item['List\nPrice'] || "0";
-                                let parsedPrice = parseFloat(rawPrice.replace(/[^0-9.]/g, '')) || 0;
-                                
-                                // Standardize function/description headers between files
-                                let desc = item['Function'] || item['Description'] || '';
-                                
-                                return {
-                                    Model: item['Model'] ? item['Model'].trim() : '',
-                                    Category: categoryName,
+                    if(headerIndex > -1) {
+                        const headers = json[headerIndex];
+                        for(let i = headerIndex + 1; i < json.length; i++) {
+                            const row = json[i];
+                            if(!row || row.length === 0 || !row[0]) continue;
+                            
+                            // Map the headers to the row values
+                            let item = {};
+                            headers.forEach((h, idx) => {
+                                if(h) item[h.toString().trim()] = row[idx];
+                            });
+                            
+                            // Clean up pricing data
+                            let rawPrice = item['List Price'] || item['List \nPrice'] || item['List\nPrice'] || item['List Price '] || "0";
+                            let parsedPrice = parseFloat(String(rawPrice).replace(/[^0-9.]/g, '')) || 0;
+                            
+                            let desc = item['Function'] || item['Description'] || '';
+                            let finish = item['Finish'] || 'N/A';
+                            
+                            if(item['Model']) {
+                                globalCatalog.push({
+                                    Model: String(item['Model']).trim(),
+                                    Category: sheetName, // Use the tab name as the category
                                     Description: desc,
-                                    Finish: item['Finish'] || 'N/A',
+                                    Finish: finish,
                                     Price: parsedPrice
-                                };
-                            }).filter(item => item.Model !== '');
-
-                            globalCatalog = globalCatalog.concat(parsedData);
-                            processedCount++;
-
-                            if (processedCount === files.length) {
-                                document.getElementById('load-status').innerText = `Loaded ${globalCatalog.length} products successfully!`;
-                                populateCategoryFilter();
-                                filterCatalog(); // Initialize list
+                                });
                             }
                         }
-                    });
-                };
-                reader.readAsText(file);
-            });
+                    }
+                });
+                
+                document.getElementById('load-status').innerText = `Loaded ${globalCatalog.length} products successfully!`;
+                populateCategoryFilter();
+                filterCatalog(); 
+            };
+            reader.readAsArrayBuffer(file);
         }
 
         function populateCategoryFilter() {
@@ -282,8 +283,7 @@
                 return matchesSearch && matchesCat;
             });
 
-            // We slice at 100 to prevent the browser from lagging on massive renders
-            renderCatalog(filtered.slice(0, 100));
+            renderCatalog(filtered.slice(0, 100)); // Render top 100 for performance
         }
 
         function renderCatalog(data) {
