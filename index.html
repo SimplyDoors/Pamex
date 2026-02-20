@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimplyDoors Quoting Engine - Pamex</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f4f7f6; 
+            color: #333; 
+        }
+        header { 
+            background-color: #0056b3; 
+            color: white; 
+            padding: 1rem 2rem; 
+            text-align: center; 
+        }
+        .container { 
+            display: flex; 
+            flex-wrap: wrap; 
+            padding: 20px; 
+            gap: 20px; 
+        }
+        .panel { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            flex: 1; 
+            min-width: 300px; 
+        }
+        .full-width { 
+            width: 100%; 
+            flex: 100%; 
+        }
+        h2 { 
+            margin-top: 0; 
+            border-bottom: 2px solid #eee; 
+            padding-bottom: 10px; 
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 10px; 
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 8px; 
+            text-align: left; 
+        }
+        th { 
+            background-color: #f8f9fa; 
+        }
+        button { 
+            background-color: #28a745; 
+            color: white; 
+            border: none; 
+            padding: 10px 15px; 
+            cursor: pointer; 
+            border-radius: 4px; 
+            font-weight: bold; 
+        }
+        button:hover { 
+            background-color: #218838; 
+        }
+        .danger-btn { 
+            background-color: #dc3545; 
+        }
+        .danger-btn:hover { 
+            background-color: #c82333; 
+        }
+        input[type="file"], input[type="text"], select, input[type="number"] { 
+            width: 100%; 
+            padding: 8px; 
+            margin-bottom: 10px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            box-sizing: border-box; 
+        }
+        .search-row { 
+            display: flex; 
+            gap: 10px; 
+        }
+        .search-row > div { 
+            flex: 1; 
+        }
+        .add-btn { 
+            padding: 4px 8px; 
+            font-size: 0.9em; 
+        }
+        .totals { 
+            font-size: 1.2em; 
+            font-weight: bold; 
+            text-align: right; 
+            margin-top: 15px; 
+        }
+        /* Print styling ensures the quote looks clean when exported to PDF */
+        @media print {
+            body { background: white; }
+            .no-print { display: none !important; }
+            .print-only { display: inline !important; }
+            .panel { box-shadow: none; border: none; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>SimplyDoors Quoting Engine</h1>
+        <p>Pamex Hardware Integration</p>
+    </header>
+
+    <div class="container">
+        <div class="panel full-width no-print">
+            <h2>1. Initialize Database</h2>
+            <p>Select all the Pamex CSV files simultaneously to load the pricing data.</p>
+            <input type="file" id="csv-uploads" accept=".csv" multiple>
+            <button onclick="processFiles()">Load Data</button>
+            <span id="load-status" style="margin-left: 10px; font-weight: bold;"></span>
+        </div>
+
+        <div class="panel no-print" style="flex: 1.5;">
+            <h2>2. Product Catalog</h2>
+            <div class="search-row">
+                <div>
+                    <label>Search by Model / Function</label>
+                    <input type="text" id="search-text" placeholder="e.g. MS-YTS07 or Deadbolt" onkeyup="filterCatalog()">
+                </div>
+                <div>
+                    <label>Category Filter</label>
+                    <select id="category-filter" onchange="filterCatalog()">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div style="max-height: 500px; overflow-y: auto;">
+                <table id="catalog-table">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th>Finish</th>
+                            <th>Price</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="catalog-body">
+                        <tr><td colspan="6" style="text-align:center;">Awaiting database initialization...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel" style="flex: 1.5;">
+            <h2>3. Active Quote</h2>
+            <div class="no-print" style="margin-bottom: 15px;">
+                <label>Customer / Project Name:</label>
+                <input type="text" placeholder="Enter project details...">
+            </div>
+            <table id="quote-table">
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Description</th>
+                        <th>Finish</th>
+                        <th>Unit Price</th>
+                        <th>Qty</th>
+                        <th>Line Total</th>
+                        <th class="no-print">Remove</th>
+                    </tr>
+                </thead>
+                <tbody id="quote-body">
+                    <tr><td colspan="7" style="text-align:center;">Quote is empty. Add items from the catalog.</td></tr>
+                </tbody>
+            </table>
+            <div class="totals">
+                Grand Total: $<span id="grand-total">0.00</span>
+            </div>
+            <div class="no-print" style="margin-top: 20px; text-align: right;">
+                <button onclick="window.print()">Print / Save PDF Quote</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let globalCatalog = [];
+        let quoteItems = [];
+
+        function processFiles() {
+            const fileInput = document.getElementById('csv-uploads');
+            const files = fileInput.files;
+            if (files.length === 0) {
+                alert("Please select at least one CSV file.");
+                return;
+            }
+
+            globalCatalog = [];
+            let processedCount = 0;
+            document.getElementById('load-status').innerText = "Processing...";
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    const lines = text.split('\n');
+                    
+                    // The Pamex files have headers buried a few lines down.
+                    // This dynamically finds the true header row starting with 'Model'.
+                    let headerIndex = 0;
+                    for (let i = 0; i < Math.min(20, lines.length); i++) {
+                        if (lines[i].toLowerCase().startsWith('model')) {
+                            headerIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    const processedText = lines.slice(headerIndex).join('\n');
+                    
+                    // Create a clean category name out of the file name
+                    const categoryName = file.name.replace('2025 Sept Pamex Price List.xlsx - ', '').replace('.csv', '');
+
+                    Papa.parse(processedText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            const parsedData = results.data.map(item => {
+                                // Extract price handling weird column names like "List \nPrice" and sanitize string formats
+                                let rawPrice = item['List Price'] || item['List \nPrice'] || item['List\nPrice'] || "0";
+                                let parsedPrice = parseFloat(rawPrice.replace(/[^0-9.]/g, '')) || 0;
+                                
+                                // Standardize function/description headers between files
+                                let desc = item['Function'] || item['Description'] || '';
+                                
+                                return {
+                                    Model: item['Model'] ? item['Model'].trim() : '',
+                                    Category: categoryName,
+                                    Description: desc,
+                                    Finish: item['Finish'] || 'N/A',
+                                    Price: parsedPrice
+                                };
+                            }).filter(item => item.Model !== '');
+
+                            globalCatalog = globalCatalog.concat(parsedData);
+                            processedCount++;
+
+                            if (processedCount === files.length) {
+                                document.getElementById('load-status').innerText = `Loaded ${globalCatalog.length} products successfully!`;
+                                populateCategoryFilter();
+                                filterCatalog(); // Initialize list
+                            }
+                        }
+                    });
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function populateCategoryFilter() {
+            const categories = [...new Set(globalCatalog.map(item => item.Category))].sort();
+            const filter = document.getElementById('category-filter');
+            filter.innerHTML = '<option value="">All Categories</option>';
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                filter.appendChild(option);
+            });
+        }
+
+        function filterCatalog() {
+            const searchText = document.getElementById('search-text').value.toLowerCase();
+            const categoryText = document.getElementById('category-filter').value;
+
+            const filtered = globalCatalog.filter(item => {
+                const matchesSearch = item.Model.toLowerCase().includes(searchText) || item.Description.toLowerCase().includes(searchText);
+                const matchesCat = categoryText === "" || item.Category === categoryText;
+                return matchesSearch && matchesCat;
+            });
+
+            // We slice at 100 to prevent the browser from lagging on massive renders
+            renderCatalog(filtered.slice(0, 100));
+        }
+
+        function renderCatalog(data) {
+            const tbody = document.getElementById('catalog-body');
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No products match your search.</td></tr>';
+                return;
+            }
+
+            data.forEach((item) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${item.Model}</strong></td>
+                    <td>${item.Category}</td>
+                    <td>${item.Description}</td>
+                    <td>${item.Finish}</td>
+                    <td>$${item.Price.toFixed(2)}</td>
+                    <td><button class="add-btn" onclick="addToQuote('${escapeQuotes(item.Model)}')">Add</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function escapeQuotes(str) {
+            return str.replace(/'/g, "\\'");
+        }
+
+        function addToQuote(modelId) {
+            const item = globalCatalog.find(i => i.Model === modelId);
+            if (!item) return;
+
+            const existing = quoteItems.find(i => i.Model === modelId);
+            if (existing) {
+                existing.Qty++;
+            } else {
+                quoteItems.push({ ...item, Qty: 1 });
+            }
+            renderQuote();
+        }
+
+        function updateQty(modelId, newQty) {
+            const item = quoteItems.find(i => i.Model === modelId);
+            if (item) {
+                item.Qty = parseInt(newQty) || 1;
+                renderQuote();
+            }
+        }
+
+        function removeFromQuote(modelId) {
+            quoteItems = quoteItems.filter(i => i.Model !== modelId);
+            renderQuote();
+        }
+
+        function renderQuote() {
+            const tbody = document.getElementById('quote-body');
+            tbody.innerHTML = '';
+            let grandTotal = 0;
+
+            if (quoteItems.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Quote is empty. Add items from the catalog.</td></tr>';
+                document.getElementById('grand-total').innerText = '0.00';
+                return;
+            }
+
+            quoteItems.forEach(item => {
+                const lineTotal = item.Price * item.Qty;
+                grandTotal += lineTotal;
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${item.Model}</strong></td>
+                    <td>${item.Description}</td>
+                    <td>${item.Finish}</td>
+                    <td>$${item.Price.toFixed(2)}</td>
+                    <td style="width: 80px;">
+                        <input type="number" min="1" value="${item.Qty}" class="no-print" onchange="updateQty('${escapeQuotes(item.Model)}', this.value)" style="margin:0;">
+                        <span class="print-only" style="display:none;">${item.Qty}</span>
+                    </td>
+                    <td>$${lineTotal.toFixed(2)}</td>
+                    <td class="no-print">
+                        <button class="add-btn danger-btn" onclick="removeFromQuote('${escapeQuotes(item.Model)}')">X</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('grand-total').innerText = grandTotal.toFixed(2);
+        }
+    </script>
+</body>
+</html>
